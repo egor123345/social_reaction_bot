@@ -4,7 +4,6 @@ import json
 import requests
 from  markup_construct import *
 from but_popul import *
-
 bot = telebot.TeleBot(config.TOKEN)
 VK_TOKEN = config.HASH
 
@@ -78,9 +77,13 @@ def handle_but_click_group(message):
         gr_posts[i]["likes_perc"] = post["likes"]["count"] / post["views"]["count"] * 100
         gr_posts[i]["reposts_perc"] = post["reposts"]["count"] / post["views"]["count"] * 100
         gr_posts[i]["comments_perc"] = post["comments"]["count"] / post["views"]["count"] * 100
-        
+    
+    add_el_to_arr_dict(gr_posts, "likes", "absol_likes")
+    add_el_to_arr_dict(gr_posts, "reposts", "absol_reposts")
+    add_el_to_arr_dict(gr_posts, "comments", "absol_comments")
     # print(max(gr_posts, key = lambda post: post["likes_perc"])) ПОИСК MAX
     create_gen_opt(bot, message, "Выберите опцию", gr_posts)
+
 
 
 
