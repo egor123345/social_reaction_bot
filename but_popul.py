@@ -1,3 +1,4 @@
+import imp
 from telebot import types
 from markup_construct import create_markup
 import numpy as np
@@ -9,10 +10,12 @@ from pandas import ExcelWriter
 from datetime import datetime, timedelta
 import xlsxwriter
 import os
+import requests
 import json
 from graph_builder import *
 from random import randint
-
+from mat import calc_ban_words, read_words_from_file
+from parse_vk import *
 
 def welcome_handler(message, bot):
     items = ['Анализ сообщества в Vk', "Анализ поста в Vk"]
@@ -105,10 +108,6 @@ def bot_get_post_by_date(message, gr_posts, temp_gr_posts, metric, bot):
             bot.register_next_step_handler(msg, bot_get_post_by_date, gr_posts, temp_gr_posts, metric, bot)
        
 
-
-# def get_post_by_date(date, gr_posts):
-
-# если нет постов то сообщение если есть то пост \n пост \n
 def draw_time_graph(bot, message, gr_labels, date, y_data, width = 12, height = 8):
     bot.send_message(message.chat.id, gr_labels["graph_title"])
     fig, ax = plt.subplots()
@@ -131,7 +130,9 @@ def draw_time_graph(bot, message, gr_labels, date, y_data, width = 12, height = 
     plt.plot(date, y_data) 
     ax.set_xlim([min(date), max(date)])
     plt.savefig('graphs/time_graph.png')
-    msg = bot.send_photo(message.chat.id, photo=open('graphs/time_graph.png', 'rb'))
+    time_graph = open('graphs/time_graph.png', 'rb')
+    msg = bot.send_photo(message.chat.id, photo=time_graph)
+    time_graph.close()
     if os.path.isfile('graphs/time_graph.png'):
             os.remove('graphs/time_graph.png')
     return msg
@@ -147,12 +148,7 @@ def send_extreme_post(extr_foo, temp_gr_posts, message, metric, bot):
     msg = bot.send_message(message.chat.id, post_url)
     return msg
 
-def create_gen_opt(bot, message, bot_msg_text, gr_posts):
-    items = ["Анализ популярности постов", "Выгрузка данных" , "Анализ типа контента", "Сравнение с другой группой", "Выход"]
-    markup = create_markup(items)
 
-    msg = bot.send_message(message.chat.id, bot_msg_text, reply_markup=markup)
-    bot.register_next_step_handler(msg, group_analys_opt, gr_posts, bot)
 
 
 
@@ -185,32 +181,40 @@ def group_analys_opt(message, gr_posts, bot):
     if message.chat.type == 'private':
         if message.text == 'Анализ популярности постов':
             items = ["Лайки", "Репосты", "Комментарии"]
-            # callback_data_arr = ["likes", "reposts", "comments"]
             markup = create_markup(items)
             msg = bot.send_message(message.chat.id, "Выберите показатель для анализа", reply_markup=markup)
             bot.register_next_step_handler(msg, choose_stat, gr_posts, bot)
-            # bot.register_next_step_handler(msg, message, gr_posts)
-            # items = ["Самый популярный пост", "Самый непопулярный пост" , "График популярности постов", "Назад"]
-            # markup = create_markup(items)
-            # msg = bot.send_message(message.chat.id, "Выберите опцию анализа", reply_markup=markup)
-            # temp_gr_posts = list(gr_posts)
-            # bot.register_next_step_handler(msg, pop_analys, gr_posts, temp_gr_posts)
         elif message.text == "Выгрузка данных":
             items = ["json", "excel"]
             markup = create_markup(items)
             msg = bot.send_message(message.chat.id, "Выберите формат данных (excel содержит основные стастики "
                                                             "json полную информацию)", reply_markup=markup)
             bot.register_next_step_handler(msg, load_data, gr_posts, group_df, bot)
+        elif message.text == "Корреляция между метриками":
+            heat_map_path = draw_heat_map(group_df, message.chat.id)
+            try:
+                heat_map_path = draw_heat_map(group_df, message.chat.id)
+                msg = bot.send_photo(message.chat.id, photo=open(heat_map_path, 'rb'))
+                if os.path.isfile(heat_map_path):
+                    os.remove(heat_map_path)
+                bot.register_next_step_handler(msg, group_analys_opt, gr_posts, bot)
+            except BaseException  as ex:
+                    print(ex)
         elif message.text == "Анализ типа контента":
             fig = draw_fig_content(group_df)
             num = randint(1, 1000)
             file_path = f"gr_data/content_{num}.png"
             fig.write_image(file_path)
-            msg = bot.send_photo(message.chat.id, photo=open(file_path, 'rb'))
+            graphic = open(file_path, 'rb')
+            msg = bot.send_photo(message.chat.id, photo=graphic)
+            graphic.close()
             if os.path.isfile(file_path):
                     os.remove(file_path)
             bot.register_next_step_handler(msg, group_analys_opt, gr_posts, bot)
-
+        elif message.text == "Сравнение с другой группой":
+            msg = bot.send_message(message.chat.id, "Введите адрес сообщества Вконтакте", 
+                            reply_markup=types.ReplyKeyboardRemove())
+            bot.register_next_step_handler(msg, get_group_to_cmp, gr_posts, bot)
         else:
             msg = bot.send_message(message.chat.id, "Анализ завершен")
             welcome_handler(msg, bot)
@@ -248,8 +252,83 @@ def load_data(message, gr_posts, group_df, bot):
 
         create_gen_opt(bot, message, "Выберите опцию анализа", gr_posts)
         
+def create_gen_opt(bot, message, bot_msg_text, gr_posts):
+    items = ["Анализ популярности постов", "Выгрузка данных" , "Анализ типа контента", "Сравнение с другой группой",
+                        "Корреляция между метриками" ,"Выход"]
+    markup = create_markup(items)
 
-def add_el_to_arr_dict(gr_posts, el, el_name):
-    for dict in gr_posts:
-        dict[el_name] = dict[el]["count"]
+    msg = bot.send_message(message.chat.id, bot_msg_text, reply_markup=markup)
+    bot.register_next_step_handler(msg, group_analys_opt, gr_posts, bot)
+
+def group_cmp(message, gr_posts, bot, cmp_gr_posts):
+    try: 
+        if message.chat.type == 'private':
+            metrics = ["likes", "reposts", "comments"]
+            if (message.text == "Абсолютные"):
+                metrics = list(map(lambda metric: "absol_" + metric, metrics))
+            else:
+                metrics = list(map(lambda metric: metric + "_perc", metrics))
+            src_gr_title = get_gr_vk_name_by_id(gr_posts[0]["owner_id"])
+            src_gr_posts_df = groups_to_pd(gr_posts)
+
+            cmp_gr_posts_df = groups_to_pd(cmp_gr_posts)
+            cmp_gr_title = get_gr_vk_name_by_id(cmp_gr_posts[0]["owner_id"])
+            
+            draw_kde_by_metrics(src_gr_posts_df, src_gr_title, 
+                                cmp_gr_posts_df, cmp_gr_title, metrics)
+
+    except Exception as ex:
+        bot.send_message(message.chat.id, str(ex))
+    finally:
+        create_gen_opt(bot, message, "Выберите опцию анализа", gr_posts)
     
+
+def get_group_to_cmp(message,  gr_posts, bot):
+    try:
+        cmp_gr_posts = get_vk_groups_info(message)
+        items = ["Абсолютные", "Процентные"]
+        markup = create_markup(items)
+        msg = bot.send_message(message.chat.id, "Выберите тип метрик социальной реакции для сравнения",
+                                reply_markup = markup)
+        bot.register_next_step_handler(msg, group_cmp, gr_posts, bot, cmp_gr_posts)
+
+    except Exception as ex:
+        msg = bot.send_message(message.chat.id, str(ex) + " Введите адрес сообщества Вконтакте для сравнения заново")
+        bot.register_next_step_handler(msg, get_group_to_cmp, gr_posts, bot)
+
+def get_gr_vk_name_by_id(id):
+    id = abs(id)
+    gr_name_par = {
+                'access_token': config.HASH,
+                'v':5.131,
+                "group_id": id
+    }
+    res = requests.get('https://api.vk.com/method/groups.getById', gr_name_par).json()
+    if ("error" in res or len(res["response"]) == 0):
+        raise Exception("Не удалось получить данные о группе Vk")
+
+    gr_name = res["response"][0]["name"]
+    return gr_name
+
+def post_analys_opt(message, comments, bot):
+     if message.chat.type == 'private':
+        if message.text == '% мата в комментариях':
+            words = read_words_from_file("C:/Users/ASUS/workspace/test/mat.txt")
+            comments_list = get_comments_from_vk_com_dict(comments)
+            ban_words_perc, ban_word_cnt = calc_ban_words(words, comments_list)
+            comments_cnt = len(comments_list)
+            msg = bot.send_message(message.chat.id, f"{ban_words_perc}% комментариев содержат нецензурную лексику\n"
+                                                f"({ban_word_cnt} из {comments_cnt} комментариев к посту)")
+            bot.register_next_step_handler(msg, post_analys_opt, comments, bot)
+        else:
+            msg = bot.send_message(message.chat.id, "Анализ завершен")
+            welcome_handler(msg, bot)
+            return
+
+def get_comments_from_vk_com_dict(comments):
+    comments_list = []
+    for com in comments:
+        comments_list.append(com["text"])
+        for nested_com in com["thread"]["items"]:
+            comments_list.append(nested_com["text"])
+    return comments_list

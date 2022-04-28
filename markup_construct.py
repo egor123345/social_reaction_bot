@@ -13,3 +13,4 @@ def create_inline_markup(items, callback_data_arr):
     
     markup.add(*inl_items)
     return markup
+
