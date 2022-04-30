@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
 from matplotlib.dates import DateFormatter
 import pandas as pd
-from pandas import ExcelWriter
+from pandas import ExcelFile, ExcelWriter
 from datetime import datetime, timedelta
 import xlsxwriter
 import os
@@ -16,6 +16,9 @@ from graph_builder import *
 from random import randint
 from mat import calc_ban_words, read_words_from_file
 from parse_vk import *
+from bot_send_file import send_plotly_img_by_bot
+from toxicity import ToxicCommentsDetector
+
 
 def welcome_handler(message, bot):
     items = ['Анализ сообщества в Vk', "Анализ поста в Vk"]
@@ -204,12 +207,7 @@ def group_analys_opt(message, gr_posts, bot):
             fig = draw_fig_content(group_df)
             num = randint(1, 1000)
             file_path = f"gr_data/content_{num}.png"
-            fig.write_image(file_path)
-            graphic = open(file_path, 'rb')
-            msg = bot.send_photo(message.chat.id, photo=graphic)
-            graphic.close()
-            if os.path.isfile(file_path):
-                    os.remove(file_path)
+            msg = send_plotly_img_by_bot(file_path, fig, message, bot)
             bot.register_next_step_handler(msg, group_analys_opt, gr_posts, bot)
         elif message.text == "Сравнение с другой группой":
             msg = bot.send_message(message.chat.id, "Введите адрес сообщества Вконтакте", 
@@ -274,13 +272,16 @@ def group_cmp(message, gr_posts, bot, cmp_gr_posts):
             cmp_gr_posts_df = groups_to_pd(cmp_gr_posts)
             cmp_gr_title = get_gr_vk_name_by_id(cmp_gr_posts[0]["owner_id"])
             
-            draw_kde_by_metrics(src_gr_posts_df, src_gr_title, 
+            fig = draw_kde_by_metrics(src_gr_posts_df, src_gr_title, 
                                 cmp_gr_posts_df, cmp_gr_title, metrics)
+            file_path = f"gr_data/kde_{message.chat.id}.png"
+
+            msg = send_plotly_img_by_bot(file_path, fig, message, bot)
 
     except Exception as ex:
-        bot.send_message(message.chat.id, str(ex))
+            msg = bot.send_message(message.chat.id, str(ex))
     finally:
-        create_gen_opt(bot, message, "Выберите опцию анализа", gr_posts)
+        create_gen_opt(bot, msg, "Выберите опцию анализа", gr_posts)
     
 
 def get_group_to_cmp(message,  gr_posts, bot):
@@ -312,23 +313,69 @@ def get_gr_vk_name_by_id(id):
 
 def post_analys_opt(message, comments, bot):
      if message.chat.type == 'private':
-        if message.text == '% мата в комментариях':
-            words = read_words_from_file("C:/Users/ASUS/workspace/test/mat.txt")
-            comments_list = get_comments_from_vk_com_dict(comments)
-            ban_words_perc, ban_word_cnt = calc_ban_words(words, comments_list)
-            comments_cnt = len(comments_list)
-            msg = bot.send_message(message.chat.id, f"{ban_words_perc}% комментариев содержат нецензурную лексику\n"
-                                                f"({ban_word_cnt} из {comments_cnt} комментариев к посту)")
-            bot.register_next_step_handler(msg, post_analys_opt, comments, bot)
-        else:
-            msg = bot.send_message(message.chat.id, "Анализ завершен")
-            welcome_handler(msg, bot)
-            return
+        try:
+            if message.text == '% мата в комментариях':
+                msg = bot.send_message(message.chat.id,  'Минутку...')
+                words = read_words_from_file("C:/Users/ASUS/workspace/test/mat.txt")
+                comments_list = get_comments_from_vk_com_dict(comments)
+                if (len(comments_list) == 0):
+                    raise Exception("Комментарии к посту отсутствуют")
+                ban_words_perc, ban_word_cnt = calc_ban_words(words, comments_list)
+                comments_cnt = len(comments_list)
+                bot.delete_message(msg.chat.id, msg.message_id)
+                msg = bot.send_message(message.chat.id, f"{ban_words_perc}% комментариев содержат нецензурную лексику\n"
+                                                    f"({ban_word_cnt} из {comments_cnt} текстовых комментариев к посту)")
+                bot.register_next_step_handler(msg, post_analys_opt, comments, bot)
+            elif message.text == '% Токсичности в комментариях':
+                msg = bot.send_message(message.chat.id,  'Минутку...')
+                comments_list = get_comments_from_vk_com_dict(comments)
+                if (len(comments_list) == 0):
+                    raise Exception("Комментарии к посту отсутствуют")
+                toxicDetector = ToxicCommentsDetector()
+                k_toxic_arr = toxicDetector.predict(comments_list)
+                # print(k_toxic_arr)
+                # print(list(map(lambda com, perc: com + ":" + str(perc) + '%', comments_list, k_toxic_arr)))
+                k_toxic_arr = np.array(k_toxic_arr)
+                toxic_mean_perc = round(k_toxic_arr.mean() * 100, 2)
+                bot.delete_message(msg.chat.id, msg.message_id)
+                msg = bot.send_message(message.chat.id, f"Средний процент токсичности в комментариях составляет {toxic_mean_perc}%\n"
+                                f"Всего было проанализировано {len(comments_list)} текстовых комментариев к посту)")
+                    
+                bot.register_next_step_handler(msg, post_analys_opt, comments, bot)
+              
+            else:
+                msg = bot.send_message(message.chat.id, "Анализ завершен")
+                welcome_handler(msg, bot)
+                return
+        except Exception as ex:
+                msg = bot.send_message(message.chat.id, str(ex) + " \nАнализ завершен")
+                welcome_handler(msg, bot)
 
 def get_comments_from_vk_com_dict(comments):
     comments_list = []
     for com in comments:
-        comments_list.append(com["text"])
-        for nested_com in com["thread"]["items"]:
-            comments_list.append(nested_com["text"])
+        if (len(com["text"]) != 0):
+            comments_list.append(com["text"])
+        # print(com)
+        if (com["thread"]["count"] > 10):
+            com_params = {
+                'access_token': VK_TOKEN,
+                'v':5.131,  
+                "post_id": com['post_id'],
+                "owner_id": com["owner_id"],
+                "count": 100,
+                "comment_id": com["id"],
+                "thread_items_count": 10
+            }
+            res = requests.get("https://api.vk.com/method/wall.getComments", com_params).json()
+            if ("error" in res or len(res["response"]) == 0):
+                raise Exception("Не удалось получить вложенные комментарии")
+            nested_coms = res["response"]["items"]
+            for nested_com in nested_coms:
+                if (len(nested_com["text"]) != 0):
+                    comments_list.append(nested_com["text"])
+        else:
+            for nested_com in com["thread"]["items"]:
+                if (len(nested_com["text"]) != 0):
+                    comments_list.append(nested_com["text"])
     return comments_list

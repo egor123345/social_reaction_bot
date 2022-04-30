@@ -115,8 +115,10 @@ def draw_kde_by_metrics(src_gr_posts_df, src_gr_title,
     # fig = ff.create_distplot([src_gr_posts_df["likes_perc"], cmp_gr_posts_df["likes_perc"]],
     #         [src_gr_title, cmp_gr_title], curve_type='kde',
     #          show_rug =False, show_hist=False)
-    fig.update_layout(template = 'plotly_dark')
-    fig.show()
+    fig.update_layout(template = 'plotly_dark', autosize=False,
+                width=1000,
+                height=700)
+    return fig
     
 def draw_figure_kde(src_metric, src_gr_title, 
                     cmp_metric, cmp_gr_title, metric_label, y_min, y_max, gr_num):
@@ -137,13 +139,10 @@ def draw_figure_kde(src_metric, src_gr_title,
     fig['layout']['xaxis' + gr_num]  = {}
     fig['layout']['yaxis' + gr_num] = {}
 
-    # Добавить название
     fig["layout"]["xaxis" + gr_num].update({'anchor': 'y'+ gr_num, "title_text":metric_label})
     fig["layout"]["yaxis" + gr_num].update({'anchor': 'x' + gr_num, 
                     "title_text":"Плотность распределения",  "title_font" :{"size": 10},
                          'domain': [y_min, y_max]})
     fig.update_layout(title_text='Ядерные оценки плотности (KDE)', title_x=0.5)
-    # fig["layout"]["title_text"] =  ""
-    # print (fig)
     return fig
     

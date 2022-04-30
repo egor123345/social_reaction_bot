@@ -5,19 +5,10 @@ from but_popul import *
 bot = telebot.TeleBot(config.TOKEN)
 VK_TOKEN = config.HASH
 
-# plt.plot([1,2,3,4])
-# # plt.show()
-# plt.savefig('saved_figure.png')
-
-# ОТФИЛЬТРОВАТЬ РЕКЛАМНЫЕ ПОСТЫ (МБ ЕСТЬ МЕТКА УЗНАТЬ)
-# вЫНЕСТИ 2 ФУНКЦИИ ЗАПРОСА К ВК В ФАЙЛ ДРУГОЙ
-
 @bot.message_handler(commands=['start'])
 def welcome(message):
     welcome_handler(message, bot)
     
-                    
-
 # @bot.callback_query_handler(func=lambda call: True)
 # def callback_inline(call):
 #     callback_inline_handler(bot, call)
@@ -82,7 +73,7 @@ def handle_but_click_post(message):
             "owner_id": post["owner_id"],
             "need_likes": 1,
             "count": 100,
-            "thread_items_count":10
+            "thread_items_count": 10
     }
     comments = requests.get("https://api.vk.com/method/wall.getComments", com_params)
     if (comments.status_code != 200):
@@ -90,7 +81,7 @@ def handle_but_click_post(message):
         return
     comments_info = comments.json()
     comments = comments_info["response"]["items"] # Вложенные коментарии в массиве в поле thread
-    items = ["% мата в комментариях", "Выход"]
+    items = ["% мата в комментариях", "% Токсичности в комментариях", "Выход"]
     markup = create_markup(items)
     msg = bot.send_message(message.chat.id, "Выберите опцию", reply_markup=markup)
     bot.register_next_step_handler(msg, post_analys_opt, comments, bot)
