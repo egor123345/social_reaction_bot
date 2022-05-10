@@ -74,7 +74,7 @@ def pop_analys(message, gr_posts, temp_gr_posts, metric, bot):
             date = list(map(lambda post: datetime.fromtimestamp(post["date"]), gr_posts))
             
             gr_labels = {"graph_title": "График социальной реакции аудитории на посты",
-                        "xlabel":"Дата" , "ylabel": f'% {metric}'}
+                        "xlabel":"Дата" , "ylabel": f' {metric}'}
             msg = draw_time_graph(bot, message, gr_labels, date, metric_data)
         elif message.text == 'Записи за определенный период':
             msg = bot.send_message(message.chat.id, "Введите дату в формате \"dd-mm-yyyy\"", 
@@ -113,12 +113,13 @@ def bot_get_post_by_date(message, gr_posts, temp_gr_posts, metric, bot):
 
 def draw_time_graph(bot, message, gr_labels, date, y_data, width = 12, height = 8):
     bot.send_message(message.chat.id, gr_labels["graph_title"])
+    plt.ioff()
     fig, ax = plt.subplots()
     fig.set_figwidth(width)
     fig.set_figheight(height)
 
-    plt.xlabel(gr_labels["xlabel"])
-    plt.ylabel(gr_labels["ylabel"])
+    ax.set_xlabel(gr_labels["xlabel"])
+    ax.set_ylabel(gr_labels["ylabel"])
     myFmt = DateFormatter("%d-%m-%y")
     ax.xaxis.set_major_formatter(myFmt)
     fig.suptitle(gr_labels["graph_title"], fontweight ="bold")
@@ -129,10 +130,12 @@ def draw_time_graph(bot, message, gr_labels, date, y_data, width = 12, height = 
     xticks = np.arange(min(date), max(date) + step, step).astype(datetime)
   
     xticks = list(set(map(lambda d: datetime(d.year, d.month, d.day), xticks)))
-    plt.xticks(xticks)
-    plt.plot(date, y_data) 
+    ax.set_xticks(xticks)
+    ax.plot(date, y_data) 
     ax.set_xlim([min(date), max(date)])
-    plt.savefig('graphs/time_graph.png')
+    fig.savefig('graphs/time_graph.png')
+    fig.clear()
+  
     time_graph = open('graphs/time_graph.png', 'rb')
     msg = bot.send_photo(message.chat.id, photo=time_graph)
     time_graph.close()

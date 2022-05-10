@@ -89,5 +89,5 @@ def handle_but_click_post(message):
 # RUN
 print("RUN!")
 plt.ioff()
-
-bot.polling(none_stop=True)
+plt.switch_backend('pdf')
+bot.polling(none_stop=True) 
