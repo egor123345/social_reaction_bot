@@ -193,7 +193,7 @@ def group_analys_opt(message, gr_posts, bot):
         elif message.text == "Выгрузка данных":
             items = ["json", "excel"]
             markup = create_markup(items)
-            msg = bot.send_message(message.chat.id, "Выберите формат данных (excel содержит основные стастики "
+            msg = bot.send_message(message.chat.id, "Выберите формат данных (excel содержит основные статистики, "
                                                             "json полную информацию)", reply_markup=markup)
             bot.register_next_step_handler(msg, load_data, gr_posts, group_df, bot)
         elif message.text == "Корреляция между метриками":

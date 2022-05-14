@@ -71,7 +71,7 @@ def is_ban_words(words, phrase):
         for part in range(len(phrase)):
             fragment = phrase[part: part+len(word)]
             if leven_distance(fragment, word) <= len(word)*0.18:
-                # print(fragment) печатает плохие словечки
+                print(fragment) #печатает плохие словечки
                 return True
     return False
 
